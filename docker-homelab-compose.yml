@@ -106,22 +106,28 @@ services:
     command: server /data --console-address ":9001"
 
   spark-master:
-    image: apache/spark:3.5.3
+    image: apache/spark:3.5.0
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_EXTRA_CLASSPATH=/opt/spark/extra-jars/*
     ports:
       - "7077:7077"
       - "8090:8080"
     volumes:
       - ./jobs:/opt/spark/jobs
+      - ./jars:/opt/spark/extra-jars
 
   spark-worker:
-    image: apache/spark:3.5.3
+    image: apache/spark:3.5.0
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
+      - SPARK_EXTRA_CLASSPATH=/opt/spark/extra-jars/*
+
     volumes:
       - ./jobs:/opt/spark/jobs
+      - ./jars:/opt/spark/extra-jars
     depends_on:
       - spark-master
 
@@ -134,6 +140,7 @@ services:
       - ./notebooks:/home/jovyan/notebooks
       - ./data:/home/jovyan/data
       - ./jobs:/home/jovyan/jobs
+      - ./jars:/home/jovyan/extra-jars
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - JUPYTER_TOKEN=local
@@ -146,6 +153,7 @@ services:
       - CHOWN_EXTRA_OPTS=-R
       - GRANT_SUDO=yes
       - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_EXTRA_CLASSPATH=/home/jovyan/extra-jars/*
     depends_on:
       - spark-master
   postgres_storage:
