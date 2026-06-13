@@ -1,3 +1,6 @@
 pyspark==3.5.0
 minio
 kagglehub
+apache-airflow
+apache-airflow-providers-apache-spark
+apache-airflow-providers-amazon
