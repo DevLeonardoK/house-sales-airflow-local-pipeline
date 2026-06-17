@@ -1,4 +1,4 @@
-pyspark==3.5.0
+pyspark==4.0.3
 minio
 kagglehub
 apache-airflow

@@ -1,0 +1,10 @@
+venv/
+logs/
+minio/
+data/
+notebooks/
+jars/
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
