@@ -34,7 +34,7 @@ def read_csv_raw(spark):
         except Exception:
                 raise
 
-def remover_espacos(spark):
+def fix_null_none_spaces(spark):
 
         try:
 
@@ -48,38 +48,16 @@ def remover_espacos(spark):
 
                 df_sem_espacos = df.cache()
 
-                quantidade_string_vazia = df_sem_espacos.select(
-                        [F.sum((F.col(c) == "").cast("int")).alias(c) for c in df_columns]
-                )
-
-                quantidade_null_none = df_sem_espacos.select(
-                        [F.sum(F.col(c).isNull().cast("int")).alias(c) for c in df_columns]
-                )
-
-                quantidade_duplicadas = df_sem_espacos.groupBy(df_columns).count().filter(F.col("count") > 1)
-
-                print("INFORMACOES ANALISE /ESPAÇO/VAZIO/NULL/NONE")
-                print("-------------------------------------------")
-
-                print("Strings vazias")
-                quantidade_string_vazia.show()
-
-                print("Null/None:")
-                quantidade_null_none.show()
-
-                print("Valores duplicados:")
-                quantidade_duplicadas.show()
-
                 return df_sem_espacos
         
         except Exception:
                 raise
 
-def fix_price(df_sem_espacos):
+def fix_price(fix_null_none_spaces):
 
         try:
 
-                df_preco_padroes = df_sem_espacos
+                df_preco_padroes = fix_null_none_spaces
 
                 #troca virgula por ponto
                 df_preco_padroes = df_preco_padroes.withColumn(
@@ -108,34 +86,132 @@ def fix_date(df_precos_padroes):
         
         try:
 
-                df_datas_certas = df_precos_padroes
+                df_fix_datas = df_precos_padroes
 
                 condicao = F.col("date").rlike(r"^\d{8}T\d{6}$") # 99999999T999999
 
-                df_datas_certas = df_datas_certas.where(condicao)
+                df_fix_datas = df_fix_datas.where(condicao)
 
-                df_precos_padroes.unpersist()
-
-                return df_datas_certas
+                return df_fix_datas
         
         except Exception:
                 raise
+
+def fix_waterfront(df_fix_datas):
+
+        try:
+
+                df_fix_waterfront = df_fix_datas
+
+                df_fix_waterfront = df_fix_waterfront.withColumn(
+                        "waterfront", F.when(F.col("waterfront") > 0, True).otherwise(False)
+                )
+
+                return df_fix_waterfront
+        
+        except Exception:
+                raise
+
+
+def fix_view(df_fix_waterfront):
+
+        try:
+
+                df_fix_view = df_fix_waterfront
+
+                condicao = F.col("view") >=0
+
+                df_fix_view = df_fix_view.where(condicao)
+
+                return df_fix_view
+
+        except Exception:
+                raise
+
+def fix_long(df_fix_view):
+
+        try:
+
+                df_fix_long = df_fix_view
+
+                df_fix_long = df_fix_long.withColumn(
+                "long",
+                        F.when(
+                                F.col("long").rlike(r"^\d+(,\d+)?$"),
+                                F.regexp_replace(F.col("long"), ",", ".")
+                        ).otherwise(F.col("long"))
+                )
+
+                df_fix_long = df_fix_long.dropna()
+                         
+                condicao = F.col("long").rlike(r"^-?\d+([.]\d+)?$").alias("long_rlike")
+
+                df_fix_long = df_fix_long.where(condicao == True)
+
+                return df_fix_long
+
+        except Exception:
+                raise
+
+
+def fix_id(fix_long):
+
+        try:
+
+                df_fix_id = fix_long
+                
+                df_fix_id = df_fix_id.withColumn(
+                        "id", F.when(
+                                        F.col("id").rlike(r"\D"),
+                                        F.regexp_replace(F.col("id"), r"\D", "")
+                                ).otherwise(F.col("id"))
+                )
+
+                condicao = F.col("id") >= 0
+
+                df_fix_id = df_fix_id.where(condicao)
+
+                return df_fix_id
+        
+        except Exception:
+                raise
+
 
 def main():
         spark = build_spark()
         try:
                 read_csv_raw(spark)
                 print("read_csv_raw - ok")
-                remover_espacos_v = remover_espacos(spark)
+
+                fix_null_none_spaces_v = fix_null_none_spaces(spark)
                 print("remover_espacos - ok")
-                fix_price_v = fix_price(remover_espacos_v)
+
+                fix_price_v = fix_price(fix_null_none_spaces_v)
                 print("fix_price - ok")
+
                 fix_date_v = fix_date(fix_price_v)
                 print("fix_date - ok")
+
+                fix_waterfront_v = fix_waterfront(fix_date_v)
+                print("fix_waterfront_v - ok")
+
+                fix_view_v = fix_view(fix_waterfront_v)
+                print("fix_views - ok")
+
+                fix_long_v = fix_long(fix_view_v)
+                print("fix_long - ok")
+                
+                fix_id_v = fix_id(fix_long_v)
+                print("fix_id - ok")
+                fix_id_v.show()
+
         except Exception:
                 raise
         finally:
+                if fix_null_none_spaces_v.is_cached:
+                        fix_null_none_spaces_v.unpersist()
                 spark.stop()
+
 
 if __name__ == "__main__":
         main()
