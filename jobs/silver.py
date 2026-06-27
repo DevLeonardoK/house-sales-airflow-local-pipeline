@@ -1,8 +1,13 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from functools import reduce
+from pyspark.sql.types import IntegerType, StringType, DoubleType, LongType, BooleanType, TimestampType
+from minio import Minio
+import os
 
 bronze_minio_path = "s3a://bronze/kc_house_data.csv"
+
+silver_minio_path = "s3a://silver/silver.parquet"
 
 def build_spark():
 
@@ -74,7 +79,9 @@ def fix_price(fix_null_none_spaces):
                         [F.col(c).rlike(r"^\d+([.]\d+)?$").alias(c) for c in colunas_numericas_selecionadas]
                 )
 
-                df_preco_padroes = df_preco_padroes.where(condicao)
+                df_preco_padroes = df_preco_padroes.where(
+                        (condicao) & (F.col("price").cast(DoubleType())> 0)
+                )
 
                 return df_preco_padroes
         
@@ -177,6 +184,156 @@ def fix_id(fix_long):
                 raise
 
 
+def fix_floors(df_fix_id):
+
+        try:
+
+                df_fix_floors = df_fix_id
+
+                df_fix_floors = df_fix_floors.withColumn("floors",
+                        F.when(
+                                F.col("floors").rlike(r"[^\d.,]"), F.regexp_replace(F.col("floors"), r"[^\d.,]", "" )
+                        ).otherwise(F.col("floors"))
+                )
+
+                df_fix_floors = df_fix_floors.withColumn(
+                        "floors", 
+                        F.regexp_replace(
+                                F.col("floors"), ",", "."
+                        )
+                )
+
+                df_fix_floors = df_fix_floors.withColumn(
+                        "floors", F.when(
+                                        (F.col("floors").cast(DoubleType()) % 1 != 0) & (F.col("sqft_basement").cast(DoubleType()) <= 0),
+                                        F.floor(F.col("floors").cast(DoubleType()))
+                                ).otherwise(F.col("floors").cast(DoubleType()))
+                )
+
+                df_fix_floors = df_fix_floors.where(F.col("floors").cast(DoubleType()) >= 0)
+
+                return df_fix_floors
+
+        except Exception:
+                raise
+
+def fix_areas(df_fix_floors):
+
+        try:
+
+                df_fix_areas = df_fix_floors
+
+                df_fix_areas = df_fix_areas.where(
+                        (F.col("sqft_living").cast(DoubleType()) > 0) & (F.col("sqft_lot").cast(DoubleType()) > 0)
+                )
+        
+                return df_fix_areas
+
+        except Exception:
+                raise
+
+def apply_cast(df_fix_areas):
+
+        try:
+
+                df = df_fix_areas
+
+                df = (
+                        df
+                        .withColumn("id", F.col("id").cast(LongType()))
+                        .withColumn("date", F.to_timestamp("date", "yyyyMMdd'T'HHmmss").cast(TimestampType()))
+                        .withColumn("price", F.col("price").cast(DoubleType()))
+                        .withColumn("bathrooms", F.floor(F.col("bathrooms").cast(DoubleType())))
+                        .withColumn("bedrooms", F.floor(F.col("bedrooms").cast(IntegerType())))
+                        .withColumn("sqft_living", F.col("sqft_living").cast(DoubleType()))
+                        .withColumn("sqft_lot", F.col("sqft_lot").cast(DoubleType()))
+                        .withColumn("floors", F.col("floors").cast(DoubleType()))
+                        .withColumn("waterfront", F.col("waterfront").cast(BooleanType()))
+                        .withColumn("view", F.floor(F.col("view").cast(IntegerType())))
+                        .withColumn("condition", F.col("condition").cast(DoubleType()))
+                        .withColumn("grade", F.col("grade").cast(DoubleType()))
+                        .withColumn("sqft_above", F.col("sqft_above").cast(DoubleType()))
+                        .withColumn("sqft_basement", F.col("sqft_basement").cast(DoubleType()))
+                        .withColumn("yr_built", F.col("yr_built").cast(IntegerType()))
+                        .withColumn("date", F.to_timestamp("date", "yyyy"))
+                        .withColumn("yr_renovated", F.col("yr_renovated").cast(IntegerType()))
+                        .withColumn("zipcode", F.col("zipcode").cast(StringType()))
+                        .withColumn("lat", F.col("lat").cast(DoubleType()))
+                        .withColumn("long", F.col("long").cast(DoubleType()))
+                        .withColumn("sqft_living15", F.col("sqft_living15").cast(DoubleType()))
+                        .withColumn("sqft_lot15", F.col("sqft_lot15").cast(DoubleType()))
+                )
+        
+                return df
+        
+        except Exception:
+                raise
+
+
+def fix_yr_built_renovated(df):
+
+        try:
+
+                df = df
+
+                df = df.where(
+                        (
+                         (F.col("yr_built") <= F.to_timestamp("date", "yyyy").cast(IntegerType())) &
+                         (F.col("yr_renovated") >= F.col("yr_built")) & 
+                         (F.col("yr_built") > 0)
+                        )
+                )
+
+                return df
+        
+        except Exception:
+                raise
+
+
+
+def add_flags(df):
+
+        try:
+                df = df.withColumn("idade_imovel", F.year(F.current_date()) - F.col("yr_built").cast(IntegerType()))
+                df = df.withColumn("foi_renovado", F.when(F.col("yr_renovated") > 0, True).otherwise(False))
+                df = df.withColumn("tem_porao", F.when(F.col("sqft_basement") > 0, True).otherwise(False))
+                df = df.withColumn("classificacao_tamanho_imovel", F.when(F.col("sqft_lot") <= 5000, "pequeno").when((F.col("sqft_lot") > 5000 ) & (F.col("sqft_lot") <= 10000), "medio").otherwise("grande"))
+
+                return df
+
+        except Exception:
+                raise
+
+
+def send_to_minio(df):
+
+        try:
+
+                client_minio = Minio(
+                        endpoint="minio:9000",
+                        access_key="minio",
+                        secret_key="minio123",
+                        secure=False
+                )
+
+                path = "/opt/airflow/files"
+
+                minio_files_path = "s3a://silver/"
+
+                os.makedirs(path, exist_ok=True)
+
+                if client_minio.bucket_exists("silver") == False:
+                        client_minio.make_bucket("silver")
+
+                #Salvar dataset parquet
+                df.write.mode("overwrite").partitionBy("idade_imovel").parquet(f"{minio_files_path}/part_idade_imovel")
+                df.write.mode("overwrite").partitionBy("foi_renovado", "yr_renovated").parquet(f"{minio_files_path}/part_renovado_ano")
+                df.write.mode("overwrite").partitionBy("classificacao_tamanho_imovel").parquet(f"{minio_files_path}/part_tamanho_imovel")
+
+        except Exception:
+                raise
+
+
 def main():
         spark = build_spark()
         try:
@@ -203,7 +360,25 @@ def main():
                 
                 fix_id_v = fix_id(fix_long_v)
                 print("fix_id - ok")
-                fix_id_v.show()
+                
+                fix_floors_v = fix_floors(fix_id_v)
+                print("fix_floors - ok")
+
+                fix_areas_v = fix_areas(fix_floors_v)
+                print("fix_areas - ok")
+
+                apply_cast_v = apply_cast(fix_areas_v)
+                print("apply_cast - ok")
+
+                fix_yr_built_renovated_v = fix_yr_built_renovated(apply_cast_v)
+                print("fix_yr_built_renovated - ok")
+
+                add_flags_v = add_flags(fix_yr_built_renovated_v)
+                print("add_flags ok")
+                add_flags_v.show(10)
+
+                send_to_minio(add_flags_v)
+
 
         except Exception:
                 raise
