@@ -11,6 +11,7 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@postgres_airflow/airflow
+    AIRFLOW_CONN_POSTGRES_DEFAULT: 'postgresql://${PG_USER}:${PG_PASS}@postgres_storage:5432/${PG_DB}'
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:airflow123@postgres_airflow/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
@@ -52,10 +53,10 @@ services:
     command: server /data --console-address ":9001"
 
   spark-master:
-    image: apache/spark:4.0.3
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.apache_spark
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-    environment:
-      - SPARK_EXTRA_CLASSPATH=/opt/spark/extra-jars/*
     ports:
       - "7077:7077"
       - "8090:8080"
@@ -64,12 +65,13 @@ services:
       - ../jars:/opt/spark/extra-jars
 
   spark-worker:
-    image: apache/spark:4.0.3
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.apache_spark
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
-      - SPARK_EXTRA_CLASSPATH=/opt/spark/extra-jars/*
 
     volumes:
       - ../jobs:/opt/spark/jobs
@@ -107,9 +109,9 @@ services:
   postgres_storage:
     image: postgres:16
     environment:
-      POSTGRES_USER: dag_house_sales
-      POSTGRES_PASSWORD: dag_house_sales123
-      POSTGRES_DB: dag_house_sales
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASS}
+      POSTGRES_DB: ${PG_DB}
     volumes:
       - postgres-storage-volume:/var/lib/postgresql/data
     healthcheck:
