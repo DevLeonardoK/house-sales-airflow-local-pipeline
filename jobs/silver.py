@@ -4,6 +4,9 @@ from functools import reduce
 from pyspark.sql.types import IntegerType, StringType, DoubleType, LongType, BooleanType, TimestampType
 from minio import Minio
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 bronze_minio_path = "s3a://bronze/kc_house_data.csv"
 
@@ -16,8 +19,8 @@ def build_spark():
                 spark = SparkSession.builder.appName("silver_app")\
                         .master("spark://spark-master:7077")\
                         .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")\
-                        .config("spark.hadoop.fs.s3a.access.key", "minio")\
-                        .config("spark.hadoop.fs.s3a.secret.key", "minio123")\
+                        .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_USER"))\
+                        .config("spark.hadoop.fs.s3a.secret.key", os.getenv("MINIO_PASS"))\
                         .config("spark.hadoop.fs.s3a.path.style.access", "true")\
                         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")\
                         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")\
@@ -243,13 +246,13 @@ def apply_cast(df_fix_areas):
                         .withColumn("id", F.col("id").cast(LongType()))
                         .withColumn("date", F.to_timestamp("date", "yyyyMMdd'T'HHmmss").cast(TimestampType()))
                         .withColumn("price", F.col("price").cast(DoubleType()))
-                        .withColumn("bathrooms", F.floor(F.col("bathrooms").cast(DoubleType())))
-                        .withColumn("bedrooms", F.floor(F.col("bedrooms").cast(IntegerType())))
+                        .withColumn("bathrooms", F.floor(F.col("bathrooms")).cast(IntegerType()))
+                        .withColumn("bedrooms", F.floor(F.col("bedrooms")).cast(IntegerType()))
                         .withColumn("sqft_living", F.col("sqft_living").cast(DoubleType()))
                         .withColumn("sqft_lot", F.col("sqft_lot").cast(DoubleType()))
-                        .withColumn("floors", F.col("floors").cast(DoubleType()))
+                        .withColumn("floors", F.col("floors").cast(IntegerType()))
                         .withColumn("waterfront", F.col("waterfront").cast(BooleanType()))
-                        .withColumn("view", F.floor(F.col("view").cast(IntegerType())))
+                        .withColumn("view", F.floor(F.col("view")).cast(IntegerType()))
                         .withColumn("condition", F.col("condition").cast(DoubleType()))
                         .withColumn("grade", F.col("grade").cast(DoubleType()))
                         .withColumn("sqft_above", F.col("sqft_above").cast(DoubleType()))
@@ -311,8 +314,8 @@ def send_to_minio(df):
 
                 client_minio = Minio(
                         endpoint="minio:9000",
-                        access_key="minio",
-                        secret_key="minio123",
+                        access_key=os.getenv("MINIO_USER"),
+                        secret_key=os.getenv("MINIO_PASS"),
                         secure=False
                 )
 
@@ -326,6 +329,7 @@ def send_to_minio(df):
                         client_minio.make_bucket("silver")
 
                 #Salvar dataset parquet
+                df.write.mode("overwrite").parquet(f"{minio_files_path}/silver_original")
                 df.write.mode("overwrite").partitionBy("idade_imovel").parquet(f"{minio_files_path}/part_idade_imovel")
                 df.write.mode("overwrite").partitionBy("foi_renovado", "yr_renovated").parquet(f"{minio_files_path}/part_renovado_ano")
                 df.write.mode("overwrite").partitionBy("classificacao_tamanho_imovel").parquet(f"{minio_files_path}/part_tamanho_imovel")
