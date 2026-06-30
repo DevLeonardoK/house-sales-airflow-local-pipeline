@@ -1,8 +1,6 @@
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.sdk import DAG
-from jobs.bronze import send_to_minio
 import datetime
 from dotenv import load_dotenv
 import os
@@ -10,19 +8,11 @@ import os
 load_dotenv()
 
 with DAG(
-    dag_id="etl_pipeline_medallion_house_sales",
+    dag_id="gold",
     start_date=datetime.datetime(2026, 6, 24),
-    schedule="@daily",
+    schedule=None,
     catchup=False,
 ) as dag:
-
-    ingest_bronze = PythonOperator(task_id="bronze", python_callable=send_to_minio)
-
-    silver_prepare = SparkSubmitOperator(
-        task_id="silver",
-        conn_id=os.getenv("SPARK_MASTER_CONN_ID"),
-        application="/opt/airflow/jobs/silver.py",
-    )
 
     ddl_database = SQLExecuteQueryOperator(
         task_id="ddl_database",
@@ -36,4 +26,4 @@ with DAG(
         application="/opt/airflow/jobs/gold.py",
     )
 
-    ingest_bronze >> silver_prepare >> ddl_database >> gold_batch
+    ddl_database >> gold_batch
