@@ -1,4 +1,4 @@
-# 🏠 House Sales — Pipeline ETL Batch (Home Lab de Dados)
+# House Sales — Pipeline ETL Batch (Home Lab de Dados)
 
 Este projeto é um home lab de dados: uma infraestrutura local, 100% conteinerizada, montada do zero na própria máquina para rodar um pipeline ETL em modo batch sobre a arquitetura medallion (bronze → silver → gold).
 
