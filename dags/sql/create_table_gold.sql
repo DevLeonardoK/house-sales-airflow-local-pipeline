@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS HOUSE_SALES_GOLD (
+CREATE SCHEMA IF NOT EXISTS gold;
+
+CREATE TABLE IF NOT EXISTS gold.HOUSE_SALES_GOLD (
     id BIGINT,
     date TIMESTAMP,
     price DOUBLE PRECISION,
@@ -19,5 +21,9 @@ CREATE TABLE IF NOT EXISTS HOUSE_SALES_GOLD (
     lat DOUBLE PRECISION,
     long DOUBLE PRECISION,
     sqft_living15 DOUBLE PRECISION,
-    sqft_lot15 DOUBLE PRECISION
+    sqft_lot15 DOUBLE PRECISION,
+    idade_imovel INT,
+    foi_renovado BOOLEAN,
+    tem_porao BOOLEAN,
+    classificacao_tamanho_imovel VARCHAR(15)
 );
