@@ -1,0 +1,9 @@
+FROM apache/spark:4.0.3
+#java e apache ja vem na imagem configurados
+
+# context do build e a raiz do projeto (compose: context: ..), por isso "jars/" e nao "../jars"
+COPY jars/ /opt/spark/jars/
+
+
+USER root
+RUN pip install --no-cache-dir minio

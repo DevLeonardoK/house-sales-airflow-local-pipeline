@@ -13,8 +13,11 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 # Spark 4.0.3 = MESMA versão do cluster (apache/spark:4.0.3)
 
-ADD spark-4.0.3-bin-hadoop3.tgz /opt/
+ADD downloads/spark-4.0.3-bin-hadoop3.tgz /opt/
 RUN mv /opt/spark-4.0.3-bin-hadoop3 /opt/spark
+
+# context do build e a raiz do projeto (compose: context: ..), por isso "jars/" e nao "../jars"
+COPY jars/ /opt/spark/jars/
 
 # pra o sistema achar o spark-submit
 ENV SPARK_HOME=/opt/spark
@@ -25,5 +28,7 @@ USER airflow
 RUN pip install --no-cache-dir \
         apache-airflow-providers-apache-spark \
         apache-airflow-providers-amazon \
+        apache-airflow-providers-postgres \
         minio \
-        kagglehub
+        kagglehub \
+        python-dotenv

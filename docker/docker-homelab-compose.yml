@@ -3,20 +3,20 @@ x-airflow-common:
 
   build:
     context: ..
-    dockerfile: docker/Dockerfile.airflow_spark
+    dockerfile: docker/Dockerfile.airflow
   env_file:
     - ${ENV_FILE_PATH:-../.env}
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow123@postgres_airflow/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_AIRFLOW_USER}:${PG_AIRFLOW_PASS}@postgres_airflow/${PG_AIRFLOW_DB}
     AIRFLOW_CONN_POSTGRES_DEFAULT: 'postgresql://${PG_USER}:${PG_PASS}@postgres_storage:5432/${PG_DB}'
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://airflow:airflow123@postgres_airflow/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql+psycopg2://${PG_AIRFLOW_USER}:${PG_AIRFLOW_PASS}@postgres_airflow/${PG_AIRFLOW_DB}
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
@@ -46,8 +46,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
     volumes:
       - ../minio/data:/data
     command: server /data --console-address ":9001"
@@ -55,7 +55,7 @@ services:
   spark-master:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.apache_spark
+      dockerfile: docker/Dockerfile.spark
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - "7077:7077"
@@ -67,12 +67,11 @@ services:
   spark-worker:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.apache_spark
+      dockerfile: docker/Dockerfile.spark
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_WORKER_MEMORY=2g
       - SPARK_WORKER_CORES=2
-
     volumes:
       - ../jobs:/opt/spark/jobs
       - ../jars:/opt/spark/extra-jars
@@ -82,7 +81,9 @@ services:
   jupyter:
     build:
       context: .
-      dockerfile: Dockerfile.jupyter_spark
+      dockerfile: Dockerfile.jupyter
+    env_file:
+      - ../.env
     user: root
     ports:
       - "8888:8888"
@@ -106,8 +107,11 @@ services:
       - SPARK_EXTRA_CLASSPATH=/home/jovyan/extra-jars/*
     depends_on:
       - spark-master
+
   postgres_storage:
     image: postgres:16
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${PG_USER}
       POSTGRES_PASSWORD: ${PG_PASS}
@@ -115,7 +119,7 @@ services:
     volumes:
       - postgres-storage-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "dag_house_sales"]
+      test: ["CMD", "pg_isready", "-U", "${PG_USER}"]
       interval: 10s
       retries: 5
       start_period: 5s
@@ -124,13 +128,13 @@ services:
   postgres_airflow:
     image: postgres:16
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow123
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${PG_AIRFLOW_USER}
+      POSTGRES_PASSWORD: ${PG_AIRFLOW_PASS}
+      POSTGRES_DB: ${PG_AIRFLOW_DB}
     volumes:
       - postgres-airflow-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "${PG_AIRFLOW_USER}"]
       interval: 10s
       retries: 5
       start_period: 5s

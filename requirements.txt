@@ -1,6 +1,0 @@
-pyspark==4.0.3
-minio
-kagglehub
-apache-airflow
-apache-airflow-providers-apache-spark
-apache-airflow-providers-amazon
