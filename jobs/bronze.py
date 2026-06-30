@@ -1,16 +1,18 @@
 from minio import Minio
 import kagglehub as kaggle
 import os
+from dotenv import load_dotenv
 
 dataset_kaggle_path = "harlfoxem/housesalesprediction"
+
 
 def send_to_minio():
     try:
         client_minio = Minio(
-            endpoint = "minio:9000",
-            access_key = "minio",
-            secret_key = "minio123",
-            secure = False
+            endpoint="minio:9000",
+            access_key=os.getenv("MINIO_USER"),
+            secret_key=os.getenv("MINIO_PASS"),
+            secure=False,
         )
     except Exception as e:
         raise Exception(f"Failed to connect to MinIO: {e}")
